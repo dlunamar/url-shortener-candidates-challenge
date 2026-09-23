@@ -1,31 +1,29 @@
-import { Form, useActionData } from "react-router";
+import { Form, data, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
-import {
-  baseUrl,
-  shortenedUrls,
-  generateShortCode,
-} from "@url-shortener/engine";
+import { handleShorten } from "~/lib/shorten.server";
+import { getBaseUrl } from "~/lib/base-url";
 
 export function loader() {
   return {
-    baseUrl: baseUrl ? baseUrl + "/s/" : "-",
+    baseUrl: `${getBaseUrl()}/s/`,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-  const url = formData.get("url") as string;
-
-  if (!url) {
-    return { error: "URL is required" };
+  const result = await handleShorten(request);
+  if (result.ok) {
+    return data({ shortenedUrl: result.shortenedUrl });
   }
+  return data(
+    { error: result.error },
+    { status: result.status, headers: result.headers },
+  );
+}
 
-  const shortCode = generateShortCode();
-
-  shortenedUrls.set(shortCode, url);
-
+export function headers() {
   return {
-    shortenedUrl: `${baseUrl}/s/${shortCode}`,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
   };
 }
 
@@ -69,7 +67,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         </Form>
 
-        {actionData?.shortenedUrl && (
+        {actionData && "shortenedUrl" in actionData && (
           <div className="mt-8 p-4 bg-violet-400 rounded-3xl border-4 border-double border-yellow-500 -rotate-1">
             <p className="text-lg text-lime-300 mb-2 font-black uppercase">
               Your shortened URL:
@@ -85,7 +83,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
 
-        {actionData?.error && (
+        {actionData && "error" in actionData && (
           <div className="mt-8 p-4 bg-lime-500 rounded-none border-8 border-solid border-red-700">
             <p className="text-2xl text-blue-800 font-black">
               {actionData.error}

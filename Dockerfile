@@ -14,8 +14,10 @@ COPY --from=dependencies /app/libs/engine/node_modules ./libs/engine/node_module
 COPY --from=dependencies /app/applications/web/node_modules ./applications/web/node_modules
 COPY . .
 # The generated Prisma Client must exist before `tsc` typechecks the engine
-# (dummy URL: generate opens no connection).
+# (dummy URL: generate opens no connection). Both filters as each package
+# resolves its own @prisma/client copy; generate is idempotent.
 RUN DATABASE_URL=file:/tmp/prisma-generate.db pnpm --filter @url-shortener/engine exec prisma generate
+RUN DATABASE_URL=file:/tmp/prisma-generate.db pnpm --filter web exec prisma generate --schema ../../libs/engine/prisma/schema.prisma
 RUN pnpm build
 
 FROM base AS production

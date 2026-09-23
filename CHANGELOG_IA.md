@@ -20,3 +20,10 @@
 - **Prompt usado**: "CONFIRMADO [plan Fase 2: Prisma + SQLite + Docker]".
 - **Modelo**: Muse Spark (opencode/muse-spark).
 - **Revisión manual**: se descartó Prisma 8 RC / 7.x tras comprobar versiones y engines en el registry (6.19.3 fijado); se detectó que el CLI ignora el `.env` raíz y se documentó `libs/engine/.env`; el build SSR emite un aviso de externalización de `.prisma/client` (inocuo hasta Fase 3, queda vigilado); `docker compose up --build` NO verificado (sin Docker en la máquina) — pendiente explícito.
+
+### [2026-09-23] Fase: Backend cableado con seguridad (Fase 3)
+- **Qué se hizo**: handlers agnósticos `handleShorten`/`handleResolve` (resultados planos), `action`/`loader` finos con status reales, rate-limit 10/min por IP, anti-SSRF fail-closed con DNS, `getBaseUrl` validada, headers `nosniff`+`referrer-policy`, store legacy eliminado; 19 tests web con Request nativo + integración crear→redirigir (43 en total).
+- **Por qué**: separar la capa HTTP del dominio (el primer diseño con `data()` en lib falló en tests y se refactorizó), cerrar validación/seguridad/estadísticas y dejar el servidor prod verificado de extremo a extremo.
+- **Prompt usado**: "ejecuta [Fase 3: action/loader + rate-limit + seguridad + tests con Request nativo]".
+- **Modelo**: Muse Spark (opencode/muse-spark).
+- **Revisión manual**: el servidor compilado moría al arrancar (`.prisma/client/default` irresoluble con pnpm strict) — se añadió `ssr.external` + `@prisma/client`/`prisma` en web (pnpm fusionó ambas copias en la entrada con el cliente generado) y se verificó con smoke prod local (200/302/404 reales); el POST crudo a `/` sin `?index` da 405 por diseño de RR, no es bug. Limitaciones conocidas: rate-limit in-memory por instancia y clave IP por header (`unknown` en dev directo); integración web con InMemory en vez de Prisma.

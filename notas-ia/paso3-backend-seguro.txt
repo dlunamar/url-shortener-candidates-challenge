@@ -1,0 +1,143 @@
+Paso 3 — Backend cableado: action/loader sobre casos de uso + seguridad
+========================================================================
+
+Fecha: 2026-09-23 (Node v24.18.0, pnpm 10.20.0)
+Rama: feat/david-luna-fase-3-backend
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+Web `app/lib/` (nuevo; lógica agnóstica al framework, testeable):
+- `repository.server.ts`: singleton perezoso
+  `getUrlRepository()` (`PrismaUrlRepository(prisma)`). Perezoso para
+  no abrir conexiones al importar en tests.
+- `rate-limit.ts`: ventana deslizante in-memory (10 req/60 s por IP,
+  `Retry-After`); `getClientIp` via `x-forwarded-for` con fallback
+  `"unknown"`.
+- `url-safety.server.ts`: anti-SSRF fail-closed — allowlist
+  http/https, bloqueo de literales (loopback, privadas, link-local
+  incl. metadata cloud, `::1`, `0.0.0.0`) y `lookup(all:true)`
+  exigiendo que TODAS las IPs sean públicas; irresolubles → rechazo.
+- `base-url.ts`: `getBaseUrl()` validada (lanza si falta PUBLIC_URL;
+  adiós a los links `"undefined/s/..."`).
+- `shorten.server.ts`: `handleShorten(request, deps)` devuelve
+  `ShortenResult` plano (`{ok:true,shortenedUrl} |
+  {ok:false,error,status,headers?}`): rate-limit→429, schema→400,
+  SSRF→400, `shortenUrl`→200, `CodeCollision→503`, resto→500.
+  La base se resuelve ANTES de persistir (fail fast sin escrituras
+  parciales).
+- `resolve.server.ts`: `handleResolve(code, repo)` → `{ok,url} |
+  {ok:false,status:400|404}`.
+
+Rutas (wrappers finos; JSX/estilos intactos salvo narrowing de tipos):
+- `_index.tsx`: `action` delega y mapea a `data()` (status reales para
+  `useActionData`); `loader` con `getBaseUrl()`; `headers()` con
+  `nosniff + referrer-policy`. JSX: `in`-narrowing que exige el union
+  de `data()`.
+- `s.$code.tsx`: `loader` delega; ok→`redirect`, mal→`Response(400/
+  404)`; `headers()` igual.
+
+Engine:
+- `shortened-url.ts` ELIMINADO + retirado el re-export `@deprecated`
+  del `index.ts` (promesa de Fase 1 cumplida).
+- `web/package.json`: `@prisma/client@6.19.3` (dep) + `prisma@6.19.3`
+  (devDep). Ver "punto 4".
+- `vite.config.ts`: `ssr.external: ["@prisma/client",
+  ".prisma/client/default"]` — sin esto el servidor compilado
+  muere al arrancar (ver punto 4).
+- `Dockerfile`: segundo `generate` defensivo para la copia de web.
+
+Tests web (5 ficheros, 19 tests, Request nativo, sin servidor):
+- `rate-limit` (ventana,Recovery,bloqueo,claves,IP/header/unknown),
+- `url-safety` (literales bloqueadas, `.invalid` fail-closed,
+  IP pública literal ok — cero red),
+- `shorten.server` (200+formato código, 400×4, SSRF→400, 429+
+  Retry-After, sin PUBLIC_URL→500),
+- `resolve.server` (ok, 404, 400),
+- `integration` (crear→redirigir→clics 1→2 con repo compartido).
+- `app/smoke.test.ts` eliminado (sustituido).
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- Handlers planos en vez de devolver `data()`/`redirect()` desde
+  lib: el primer intento devolvía `data()` y los tests fallaron —
+  `data()` NO es un Response sino `{type:DataWithResponseInit,...}`.
+  El refactor separó lib agnóstica (testeable con asserts normales)
+  del borde React Router (2 líneas por ruta). Mejor diseño que el
+  plan inicial.
+- `PUBLIC_URL` resuelta antes de persistir: un 500 de config no debe
+  dejar filas huérfanas; el test sin env lo cubre.
+- Rate-limit por header + in-memory: RR v7 no expone el socket en
+  `ActionArgs`; documentado como limitación (ver punto 5).
+- SSRF con `lookup({all:true})`: un solo A basta para filtrar; se
+  exigen todas por DNS round-robin. Latencia aceptable para el reto.
+- `headers()` por ruta (no `entry.server.ts` nuevo): mínimo que
+  cumple "headers razonables" sin abrir otro frente.
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- `vi.mock` del repositorio en tests: frágil; inyección de deps
+  explícita (`ShortenDeps`, param `repo`) es más simple y legible.
+- Integración web contra Prisma real: el CLI de Prisma no es
+  resoluble desde web y duplicaría la suite de Fase 2; el flujo
+  crear→redirigir→clics con `InMemory` cubre la capa HTTP y el
+  repositorio Prisma ya tiene la suya. Trade-off documentado.
+- `ssr.noExternal` para `@prisma/client` (empaquetarlo): el blob CJS
+  deja el especificador `.prisma/client/default` huérfano. External
+  + copia resoluble es el camino.
+- Hoist global vía `.npmrc` o alias absoluto en config: más magia
+  implícita que declarar la dep donde se usa (web).
+
+4. Incidencia principal: Prisma + SSR + pnpm (plan B ejecutado)
+----------------------------------------------------------------
+El build emitía `.prisma/client/default ... treating it as external`
+(Fase 2, entonces inocuo). Con uso real, `pnpm start` moría con
+`TypeError: Invalid module ".prisma/client/default" is not a valid
+package name`. Causa raíz (pnpm strict): el bundle importa
+`@prisma/client` y Node lo resuelve desde
+`applications/web/build/server/` — la copia del engine
+(`libs/engine/node_modules`) NO es ancestro y era invisible.
+Solución en dos pasos, ambas verificadas:
+  a) `ssr.external` explícito → el bundle importa `@prisma/client`
+     (antes seguía el enlace interno roto). Falló igual: la copia
+     seguía sin resolverse desde web.
+  b) `@prisma/client@6.19.3` (+ `prisma` dev, para el CLI) también
+     en web: al proveer web el peer `prisma`, pnpm fusionó AMBAS
+     copias en la misma entrada del store — la que ya tiene el
+     cliente generado (la generación es schema-anchored: `generate
+     --schema` desde web escribió en la entrada del engine).
+     Segundo `generate` en el Dockerfile como red defensiva.
+Sin el smoke test del servidor prod (`build + start + curl`) esto
+habría llegado a Docker roto: el aviso del build hay que tomárselo
+en serio.
+
+5. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+- `pnpm --filter web test` → 5 ficheros, 19 passed (tras corregir
+  `data()`→resultados planos y `PUBLIC_URL` en tests + mover su
+  resolución antes del save).
+- `pnpm typecheck` → 2 successful (tras `in`-narrowing en el JSX).
+- `pnpm test` (turbo) → 43 passed (24 engine + 19 web).
+- `pnpm build` → 2 successful (aviso `.prisma` RESUELTO vía
+  ssr.external; ya no aparece).
+- Smoke prod local (`build + start` con `DATABASE_URL=file:./dev.db`
+  y `PUBLIC_URL=http://localhost:3000`): GET /→200,
+  POST /?index válido→200 + `shortenedUrl` Base62 7 chars persistida,
+  GET /s/:code→302→URL original, código unknown→404.
+  Nota: el POST crudo a `/` da 405 sin `?index` (RR exige `?index`
+  para la action de la ruta índice en peticiones documento; el
+  `<Form>` real lo añade solo: `action="/?index"`). No es bug.
+- Fila de smoke borrada de `dev.db` (0 filas restantes).
+- `git status`: `dev.db`/`.env` ignorados; sin artefactos sueltos.
+
+6. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- Fase 4: `listUrls` alimenta la vista; rediseño UI (shadcn mínimo,
+  `useNavigation`, a11y) sobre el `actionData` con status que ya
+  existe. El `loader` de `_index` puede ampliarse a listar URLs sin
+  tocar el action.
+- Limitaciones conocidas (van a CHANGELOG_IA.md): rate-limit
+  in-memory por instancia + clave IP por header (`unknown` en dev
+  directo); integración web con InMemory en vez de Prisma.
+- Docker sigue sin verificarse aquí (sin Docker en la máquina);
+  el servidor prod SÍ verificado en local, que cubre el riesgo
+  principal (bundle SSR + Prisma).

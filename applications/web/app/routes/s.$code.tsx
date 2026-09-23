@@ -1,15 +1,18 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/s.$code";
-import { shortenedUrls } from "@url-shortener/engine";
+import { handleResolve } from "~/lib/resolve.server";
 
-export function loader({ params }: Route.LoaderArgs) {
-  const { code } = params;
-
-  const url = shortenedUrls.get(code);
-
-  if (!url) {
-    throw new Response("Not Found", { status: 404 });
+export async function loader({ params }: Route.LoaderArgs) {
+  const result = await handleResolve(params.code);
+  if (!result.ok) {
+    throw new Response(result.message, { status: result.status });
   }
+  return redirect(result.url);
+}
 
-  return redirect(url);
+export function headers() {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+  };
 }
