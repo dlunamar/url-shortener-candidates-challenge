@@ -1,0 +1,52 @@
+Paso 5 — Cierre: submission, README y verificación global
+==========================================================
+
+Fecha: 2026-09-23 (Node v24.18.0, pnpm 10.20.0)
+Rama: docs/david-luna-fase-5-cierre
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+Cero cambios de código. Solo docs:
+- `CHALLENGE_SUBMISSION.md` (modificado): las 4 secciones
+  rellenas EN ESPAÑOL (decisión confirmada): qué se hizo y por qué
+  (fases 0-4), qué haría con más tiempo (Redis, Docker pendiente,
+  tests DOM, paginación, deduplicación), uso de IA (modelo Muse
+  Spark, prompts representativos por fase, revisión manual) y
+  feedback del reto. Destilado fiel de `CHANGELOG_IA.md` y
+  `notas-ia/paso*.txt`, sin contenido inventado.
+- `README.md` (modificado): 4 filas nuevas en Tech Stack (Prisma,
+  SQLite, Zod, Vitest). El setup local/Docker ya estaba al día
+  desde Fase 2; solo repaso.
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- Submission en español frente al template inglés: coherencia con
+  todo el registro (`notas-ia`, `CHANGELOG_IA.md`) y decisión
+  explícita del usuario.
+- Sin código nuevo en el cierre: cada fase anterior terminó
+  verificada; reabrir código aquí mezclaría alcance de cierre con
+  alcance de producto.
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- Smoke prod adicional en Fase 5: redundante (verificado en Fases
+  3 y 4 con el mismo build); la verificación global
+  typecheck+test+build basta.
+- Verificar Docker "como sea" sin daemon: imposible localmente;
+  queda pendiente explícito en la submission en vez de afirmarlo.
+
+4. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+- `pnpm typecheck` → 2 successful (cache hit, sin cambios de código).
+- `pnpm test` (turbo, `cache bypass` en ambos) → 43 passed
+  (24 engine + 19 web).
+- `pnpm build` → 2 successful.
+- `git status`: solo `M CHALLENGE_SUBMISSION.md`, `M README.md`
+  (+ `?? AGENTS.md` untracked previo). Sin artefactos sueltos.
+
+5. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- No hay Fase 6. Pendiente global: `docker compose up --build`
+  (sin Docker en la máquina) y push final (el remoto
+  `dlunamar/url-shortener-candidates-challenge` devolvía 404;
+  el usuario lo dejó para el final). Ambos fuera del código.

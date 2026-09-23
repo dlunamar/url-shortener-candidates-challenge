@@ -34,3 +34,10 @@
 - **Prompt usado**: "ejecuta [Fase 4: UI shadcn mínima + lista con estadísticas]".
 - **Modelo**: Muse Spark (opencode/muse-spark).
 - **Revisión manual**: se corrigió el `aria-label` del badge (decía "1 clicks"); smoke prod local verificó vacío→crear→0 clics→302→1 clic en HTML real y se limpió la fila de prueba de `dev.db`.
+
+### [2026-09-23] Fase: Cierre y submission (Fase 5)
+- **Qué se hizo**: `CHALLENGE_SUBMISSION.md` completo en español (qué/tiempos/IA/feedback, destilado del registro), 4 filas nuevas en el README (Prisma, SQLite, Zod, Vitest); verificación global typecheck+test+build en verde; cero cambios de código.
+- **Por qué**: dejar el reto entregable con docs fieles al trabajo real y al stack real.
+- **Prompt usado**: "ejecuta [Fase 5: cierre sin cambios de código]" + 2 decisiones (idioma español, filas README sí).
+- **Modelo**: Muse Spark (opencode/muse-spark).
+- **Revisión manual**: repaso del README (setup/Docker ya al día desde Fase 2); pendientes explícitos: `docker compose up --build` (sin daemon) y push final (remoto 404).

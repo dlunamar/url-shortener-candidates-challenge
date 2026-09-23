@@ -15,6 +15,10 @@ url-shortener/
 | [React](https://react.dev/)                   | Library for building user interfaces with components                                              |
 | [React Router v7](https://reactrouter.com/)   | Full-stack React framework. Handles routing, data loading (loaders), mutations (actions), and SSR |
 | [TypeScript](https://www.typescriptlang.org/) | Typed superset of JavaScript for catching errors at compile time                                  |
+| [Prisma](https://www.prisma.io/)                | ORM with versioned migrations (SQLite). Repository pattern keeps the domain decoupled             |
+| [SQLite](https://www.sqlite.org/)               | File database: `libs/engine/prisma/dev.db` locally, `./data` volume in Docker                     |
+| [Zod](https://zod.dev/)                         | Input validation in the engine and in the form `action` (defense in depth)                        |
+| [Vitest](https://vitest.dev/)                   | Unit and integration tests for the engine and the backend (`turbo test`, never cached)            |
 | [Tailwind CSS](https://tailwindcss.com/)      | Utility-first CSS framework for rapid UI development                                              |
 | [Vite](https://vite.dev/)                     | Fast build tool and dev server with hot module replacement                                        |
 
