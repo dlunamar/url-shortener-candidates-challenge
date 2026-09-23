@@ -1,0 +1,126 @@
+Paso 1 — Dominio puro y casos de uso (sin Prisma)
+=================================================
+
+Fecha: 2026-09-23 (Node v24.18.0, pnpm 10.20.0)
+Rama: feat/david-luna-fase-1-dominio
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+Solo `libs/engine/src`; la web no se toca.
+
+Dominio (`src/domain/`):
+- `errors.ts` (nuevo): errores tipados con `code` discriminante para
+  mapear a HTTP en Fase 3 — `InvalidUrlError`, `InvalidCodeError`,
+  `UrlNotFoundError`, `CodeCollisionError`.
+- `url.ts` (nuevo): entidad `ShortenedUrl`
+  `{ code, originalUrl, clicks, createdAt }` + factoría
+  `createShortenedUrl` (inicializa `clicks: 0`, `createdAt: now`).
+  Sin el `Map<string,string>` anterior: ahora hay sitio para clics.
+- `url-repository.ts` (nuevo): puerto `UrlRepository` (`save`,
+  `findByCode`, `exists`, `incrementClicks`, `findAll`). El dominio
+  solo conoce esta interfaz.
+
+Núcleo:
+- `code-generator.ts` (nuevo): alfabeto Base62 (a-zA-Z0-9, precisión
+  confirmada), longitud 7, `randomInt` de `node:crypto` (no
+  `Math.random`). Generador inyectable (`CodeGenerator = () => string`,
+  `createCodeGenerator(length)`) para tests deterministas.
+- `schemas.ts` (nuevo): Zod v4. `ShortenInputSchema` (trim, 1..2048
+  chars, `new URL` + allowlist `http/https` — rechaza `javascript:`,
+  `data:`, `ftp:`, texto libre) y `ShortCodeSchema` (regex derivada de
+  `CODE_LENGTH`: 7 base62). Defensa en profundidad junto al `action`
+  de Fase 3.
+
+Casos de uso (`src/use-cases/`):
+- `shorten-url.ts`: valida → genera → comprueba `exists` → reintenta
+  acotado (`MAX_GENERATION_ATTEMPTS = 5`) → `CodeCollisionError` si
+  agota → `save` con clics a 0.
+- `resolve-url.ts`: valida formato → `incrementClicks` (cuenta el
+  clic) → `UrlNotFoundError` si no existe. Las estadísticas nacen
+  aquí, no en el loader.
+- `list-urls.ts`: `findAll` para la vista con estadísticas (Fase 4).
+
+Infra (`src/infra/in-memory-url-repository.ts`, nuevo): implementación
+en memoria del puerto, SOLO para tests. Producción usará Prisma en
+Fase 2.
+
+Compatibilidad:
+- `index.ts` (modificado): exporta el nuevo API público y re-exporta
+  `shortenedUrls`/`generateShortCode` marcados `@deprecated` para que
+  las rutas actuales sigan compilando hasta Fase 3.
+- `src/smoke.test.ts` (eliminado): sustituido por 20 tests reales.
+
+Tests (6 ficheros, 20 tests): `code-generator` (alfabeto, longitud,
+1000 códigos únicos, longitudes custom/inválidas), `schemas`
+(http/https ok, trim, rechazo de vacía/malformada/`javascript:`/
+`data:`/`ftp:`/sobrelongitud, formato de código), `shorten-url`
+(crea, reintenta ante colisión con generador secuencial, agota
+intentos → `CodeCollisionError`, input inválido →
+`InvalidUrlError`), `resolve-url` (resuelve y cuenta 1→2 clics,
+desconocido → `UrlNotFoundError`, malformado → `InvalidCodeError`),
+`list-urls`, `in-memory-url-repository`.
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- Repository pattern ya en Fase 1 (aunque el engine aún no tenga
+  Prisma): las rutas y los casos de uso dependen del puerto, así que
+  Fase 2 añade `PrismaUrlRepository` sin tocar ni dominio ni tests de
+  casos de uso (DIP/OCP). El `Map` global exportado desaparece como
+  API recomendada.
+- `incrementClicks` como método dedicado (no get+set): permite
+  implementarlo atómicamente en Prisma (`update increment`) en Fase 2
+  y evita race conditions de lectura-modificación-escritura.
+- Reintento acotado en vez de loop infinito: con 62^7 combinaciones
+  la colisión es anecdótica, pero un generador defectuoso o un store
+  lleno no debe colgar el servidor; el error es explícito y mapeable
+  a 500/503 en Fase 3.
+- Validación con `new URL` + allowlist en vez de
+  `z.string().url()`: evita depender de APIs de formato deprecadas
+  entre Zod v3/v4 y deja el mensaje de error bajo control.
+- `CODE_LENGTH` canónico en `code-generator.ts`, `schemas.ts` deriva
+  la regex de él: una sola fuente de verdad si la longitud cambia.
+- Shim deprecado en vez de migrar las rutas ya: Fase 1 queda
+  verificable (`typecheck/build` verdes) y reversible; la migración
+  de rutas con rate-limit y seguridad es Fase 3.
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- Cambiar la firma de `generateShortCode` existente: rompería las
+  rutas a mitad del refactor; se depreca en su lugar y se elimina
+  en Fase 3.
+- `Math.random` con alfabeto mayor: seguiría sin ser cripto ni
+  testeable de forma determinista; `randomInt` + inyección lo
+  resuelven a la vez.
+- Contar clics en el loader de la ruta (get+set): acopla
+  persistencia a HTTP y no es atómico; el caso de uso
+  `resolveUrl` centraliza la regla.
+- Prisma ya en esta fase: mezclaría infra real con diseño del
+  dominio y haría los tests dependientes de SQLite; el orden
+  dominio-primero mantiene cada fase verificable por separado.
+
+4. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+- `pnpm --filter @url-shortener/engine test` → 6 ficheros, 20 tests
+  passed (antes: 1 smoke). En el camino se detectó y corrigió un
+  import relativo erróneo en `shorten-url.test.ts`
+  (`./use-cases/...` → `./...`); el resto pasó a la primera.
+- `pnpm typecheck` (turbo, 2 packages) → 2 successful.
+- `pnpm test` (turbo) → 2 successful (engine 20 passed, web smoke
+  intacto para Fase 3).
+- `pnpm build` (turbo) → 2 successful; la web compila sin cambios
+  gracias al shim (SSR: 18 módulos transformados).
+- `git status` confirma que `dist/` y `*.tsbuildinfo` del `tsc`
+  quedan ignorados y no entran al commit.
+
+5. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- Fase 2: `PrismaUrlRepository` implementando el mismo puerto +
+  schema SQLite + migraciones + Dockerfile/compose/README Docker.
+  Los tests de casos de uso no cambian; se añade suite de repository
+  contra SQLite efímero.
+- Fase 3: migrar `action`/`loader` a `shortenUrl`/`resolveUrl`,
+  eliminar `shortened-url.ts` y el shim, añadir rate-limit
+  in-memory (documentar como limitación conocida), bloqueo SSRF y
+  mapeo errores→status. Tests invocando funciones exportadas con
+  Request nativo; el smoke de web se sustituye allí.
+- Fase 4: `listUrls` alimenta la vista de URLs con estadísticas.
