@@ -23,10 +23,14 @@ url-shortener/
 ```bash
 pnpm install
 cp .env.example .env
+# Prisma CLI only reads libs/engine/.env: copy the DATABASE_URL line there
+pnpm --filter @url-shortener/engine db:migrate
 pnpm dev
 ```
 
 Open `http://localhost:5173`
+
+Data lives in `libs/engine/prisma/dev.db` (gitignored SQLite file).
 
 ## Docker Setup
 
@@ -35,3 +39,7 @@ docker-compose up --build
 ```
 
 Open `http://localhost:3000`
+
+- Migrations run automatically on container start (`prisma migrate deploy`).
+- Data persists in the `./data` volume (`shortener.db`, gitignored), so
+  shortened URLs survive restarts and rebuilds.
