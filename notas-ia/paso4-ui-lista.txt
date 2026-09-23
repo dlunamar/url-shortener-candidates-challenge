@@ -1,0 +1,93 @@
+Paso 4 — UI con componentes y lista con estadísticas
+====================================================
+
+Fecha: 2026-09-23 (Node v24.18.0, pnpm 10.20.0)
+Rama: feat/david-luna-fase-4-ui
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+Solo `applications/web`. Ni `app/lib` ni el engine se tocan.
+
+Nuevos:
+- `app/lib/cn.ts`: `cn()` (clsx + tailwind-merge), convención shadcn.
+- `app/components/ui/button.tsx`: API shadcn (`variant` default/
+  secondary/outline/ghost, `size` default/sm/lg vía cva) sobre
+  `<button>` nativo, sin Radix (ver punto 2).
+- `app/components/ui/input.tsx` y `ui/card.tsx` (`Card`,
+  `CardHeader/Title/Description/Content`): estilos consistentes zinc.
+- `app/components/shorten-form.tsx`: Card con `<Form>`, `<label
+  htmlFor="url">`, `input type="url"`, `useNavigation()` →
+  `submitting` (botón deshabilitado + "Shortening…", `aria-busy`),
+  error con `role="alert"` + `aria-invalid`/`aria-describedby`,
+  resultado con link + botón Copy (`navigator.clipboard` con guards
+  y feedback "Copied").
+- `app/components/url-list.tsx` + `url-list-item.tsx`: Card
+  "Shortened URLs" con estado vacío explícito; fila con short link,
+  original truncada (con `title`), badge de clics (singular/plural
+  + `aria-label` coherente) y fecha (`time dateTime`).
+- Deps web: `clsx@2.1.1`, `tailwind-merge@3.7.0`,
+  `class-variance-authority@0.7.1` (pins exactos).
+
+Modificado:
+- `app/routes/_index.tsx`: reescrito a composición. El `loader`
+  añade `urls: listUrls({repo})` (serializadas a ISO para el
+  borde SSR); `action`/`headers`/`meta` intactos. Toda la estética
+  anterior (gradientes, bordes dashed, rotaciones) desaparece aquí.
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- shadcn-sin-Radix (confirmado en el plan): el único primitivo con
+  lógica que aporta Radix al trío button/input/card sería
+  `Slot/asChild`, que no se usa en ningún sitio; `clsx`+
+  `tailwind-merge`+`cva` dan la API y el look shadcn sin 4 deps
+  fanstasma. Documentado como decisión, no como olvido.
+- `ShortenForm` recibe `actionData` por props en vez de llamar a
+  `useActionData` dentro: evita el import de tipos de la ruta
+  (ciclo ruta↔componente) y la hace testeable/pura.
+- `createdAt` a ISO en el loader: el borde SSR serializa a JSON;
+  el tipo que viaja es string y se declara como tal
+  (`UrlListEntry`), sin mentir con `Date`.
+- Sin RTL/happy-dom (confirmado): la cobertura crítica ya existe
+  (43 tests); la UI se verifica con smoke prod sobre HTML real,
+  que además ejerce loader+action+SSR de verdad.
+- `type="url"` además de validación servidor: UX (teclado móvil,
+  chequeo nativo) sin confiar en cliente (defensa en profundidad
+  intacta en Fase 3).
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- shadcn real con `@radix-ui/react-slot` (+ cva/clsx/merge):
+  fidelidad nominal a cambio de deps para un `asChild` sin uso.
+- `components.json` + CLI de shadcn: pensado para scaffolds
+  interactivos; a mano son 3 ficheros pequeños y el diff queda
+  explícito para revisión.
+- Tests de render con Testing Library: +2 deps y entorno DOM solo
+  para re-verificar lo que el smoke prod ya cubre con el servidor
+  real (incluida hidratación SSR, que RTL no ejercita).
+- Contador de clics en vivo/polling: fuera de alcance; la lista se
+  refresca con la navegación normal (el loader corre en cada GET).
+
+4. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+- `pnpm typecheck` → 2 successful (a la primera con los nuevos
+  componentes).
+- `pnpm test` (turbo) → 43 passed (24 engine + 19 web, sin cambios).
+- `pnpm build` → 2 successful.
+- Smoke prod local (`build + start`, `dev.db` + `PUBLIC_URL` por
+  env): GET / muestra form con `<label for="url">`, `type="url"`,
+  `aria-busy="false"` y estado vacío; POST /?index crea código
+  Base62 (`o2gkdgC`); GET / lista la fila con badge "0 clicks";
+  GET /s/:code → 302; GET / muestra "1 click" (singular).
+- Incidencia menor: el `aria-label` del badge decía siempre
+  "clicks" ("1 clicks"); corregido a singular/plural coherente
+  con el texto visible y re-verificado en HTML (los comentarios
+  `<!-- -->` de hidratación obligaron a un regex tolerante en la
+  comprobación, no hay bug).
+- Fila de smoke borrada de `dev.db` (0 filas restantes).
+
+5. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- Fase 5 (cierre): `CHALLENGE_SUBMISSION.md` (qué/tiempos/IA/
+  feedback), repaso final del README, pasada global
+  typecheck+build+test y `docker compose up --build` cuando haya
+  Docker. Sin cambios de código previstos.

@@ -27,3 +27,10 @@
 - **Prompt usado**: "ejecuta [Fase 3: action/loader + rate-limit + seguridad + tests con Request nativo]".
 - **Modelo**: Muse Spark (opencode/muse-spark).
 - **Revisión manual**: el servidor compilado moría al arrancar (`.prisma/client/default` irresoluble con pnpm strict) — se añadió `ssr.external` + `@prisma/client`/`prisma` en web (pnpm fusionó ambas copias en la entrada con el cliente generado) y se verificó con smoke prod local (200/302/404 reales); el POST crudo a `/` sin `?index` da 405 por diseño de RR, no es bug. Limitaciones conocidas: rate-limit in-memory por instancia y clave IP por header (`unknown` en dev directo); integración web con InMemory en vez de Prisma.
+
+### [2026-09-23] Fase: UI con componentes y lista con estadísticas (Fase 4)
+- **Qué se hizo**: componentes estilo shadcn sin Radix (`button`/`input`/`card` con cva+clsx+merge), `ShortenForm` (label, `type=url`, loading con `useNavigation`, `role=alert`, botón copiar), `UrlList`/`UrlListItem` (badge de clics, fecha, vacío explícito); `loader` con `listUrls`; 43 tests intactos.
+- **Por qué**: sustituir el JSX monolítico por piezas reutilizables y accesibles, y exponer las estadísticas que el backend ya contaba desde Fase 1.
+- **Prompt usado**: "ejecuta [Fase 4: UI shadcn mínima + lista con estadísticas]".
+- **Modelo**: Muse Spark (opencode/muse-spark).
+- **Revisión manual**: se corrigió el `aria-label` del badge (decía "1 clicks"); smoke prod local verificó vacío→crear→0 clics→302→1 clic en HTML real y se limpió la fila de prueba de `dev.db`.
