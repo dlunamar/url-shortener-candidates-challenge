@@ -37,9 +37,3 @@ export { listUrls, type ListUrlsDeps } from "./use-cases/list-urls";
 export { InMemoryUrlRepository } from "./infra/in-memory-url-repository";
 export { PrismaUrlRepository } from "./infra/prisma-url-repository";
 export { prisma } from "./infra/prisma-client";
-
-/**
- * @deprecated Legacy in-memory store. Kept so the web routes still compile
- * until they migrate to the use cases (Phase 3). Do not use in new code.
- */
-export { shortenedUrls, generateShortCode } from "./shortened-url";
