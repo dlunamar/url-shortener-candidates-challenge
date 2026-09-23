@@ -1,0 +1,62 @@
+Paso 6 — Docker Desktop instalado y compose verificado
+==========================================================
+
+Fecha: 2026-09-24 (Node v24.18.0, pnpm 10.20.0, Windows 10 Home x64)
+Rama: chore/david-luna-fase-6-docker
+
+1. Qué se hizo (entorno + verificación, cero cambios de código)
+---------------------------------------------------------------
+- Instalado WSL2 (2.7.14, kernel 6.18, versión por defecto 2) vía
+  `wsl.exe --install` elevado. La máquina ya traía hipervisor
+  detectado y build 26200: sin pasos extra de BIOS.
+- Instalado Docker Desktop 4.91.0 vía
+  `winget install -e --id Docker.DockerDesktop` (elevado).
+  Tras la instalación hizo falta UN REINICIO (los componentes WSL
+  no levantaban distros; `docker info` daba 500). Tras reiniciar,
+  Docker Desktop arrancó el daemon (Server 29.8.0, kernel WSL2,
+  distro `docker-desktop` Running).
+- `docker compose up --build -d` funcionó A LA PRIMERA, sin tocar
+  ni una línea del Dockerfile/compose escritos en Fase 2/3:
+  pull node:20-alpine, `pnpm install --frozen-lockfile`, doble
+  `prisma generate` (engine + web, misma entrada del store),
+  `turbo build` OK y stage production completo.
+- Logs del contenedor: `migrate deploy` aplicó
+  `20260923135100_init` y `react-router-serve` quedó en :3000.
+- Funcional: GET / 200 con estado vacío; POST /?index creó
+  `RcMs5CX`; GET /s/RcMs5CX → 302 al original.
+- Persistencia: `compose restart web` → la URL y su "1 click"
+  sobrevivieron (volumen `./data`) y el redirect siguió 302.
+- Limpieza: `compose down` + borrado de `./data` (la DB de humo no
+  queda en el volumen entregado).
+
+2. Por qué / decisiones
+-----------------------
+- Docker Desktop frente a Podman: decisión del usuario; compose
+  incluido y flujo idéntico al exigido por el reto.
+- No se instaló distro Ubuntu: Docker Desktop trae las suyas;
+  paso innecesario evitado.
+- Esta fase no genera commit de código: todo funcionó tal cual
+  estaba. El registro (este fichero + changelog) va en un commit
+  `docs(docker)`.
+
+3. Alternativas descartadas
+----------------------------
+- Podman Desktop: más ligero, pero añade una capa de
+  compatibilidad `docker compose` que el reto no pide.
+- Verificación parcial sin daemon: ya estaba hecha (smoke prod
+  local en Fases 3/4); esta fase era el eslabón pendiente real.
+
+4. Cómo se verificó (comandos y resultado)
+-------------------------------------------
+- `docker info` → Server 29.8.0, WSL2 backend.
+- `docker compose up --build -d` → imagen
+  `url-shortener-candidates-challenge-web` construida, contenedor
+  Up en 0.0.0.0:3000.
+- curl: HOME vacío OK → POST crea `RcMs5CX` → 302 OK →
+  `restart` → código + "1 click" presentes → 302 OK.
+- `git status` final: solo `?? AGENTS.md` (untracked previo).
+
+5. Pendiente restante (fuera del código)
+------------------------------------------
+- Push final de las 7 ramas (el remoto daba 404; el usuario lo
+  dejó para el final).

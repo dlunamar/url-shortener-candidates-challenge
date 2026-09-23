@@ -41,3 +41,10 @@
 - **Prompt usado**: "ejecuta [Fase 5: cierre sin cambios de código]" + 2 decisiones (idioma español, filas README sí).
 - **Modelo**: Muse Spark (opencode/muse-spark).
 - **Revisión manual**: repaso del README (setup/Docker ya al día desde Fase 2); pendientes explícitos: `docker compose up --build` (sin daemon) y push final (remoto 404).
+
+### [2026-09-24] Fase: Docker verificado de principio a fin (Fase 6)
+- **Qué se hizo**: instalado WSL2 + Docker Desktop 4.91.0 (con reinicio intermedio); `docker compose up --build` funcionó sin cambios; migraciones auto aplicadas; flujo crear→302 verificado; `restart` confirmó persistencia de URL y clics en `./data`; volumen limpiado después.
+- **Por qué**: era el único eslabón sin verificar (el reto lo exige explícitamente) y valida el trabajo de Fase 2/3 en condiciones reales.
+- **Prompt usado**: "puedes instalarme lo necesario en mi maquina para el paso 2. Verifica Docker."
+- **Modelo**: Muse Spark (opencode/muse-spark).
+- **Revisión manual**: el daemon no levantaba hasta reiniciar (distros WSL ausentes); el primer `up --build` salió a la primera, sin iterar el Dockerfile. Cero cambios de código en esta fase.
