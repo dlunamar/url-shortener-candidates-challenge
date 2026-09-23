@@ -9,17 +9,23 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo .turbo",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push"
   },
   "exports": {
     ".": "./src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^22.19.7",
+    "prisma": "6.19.3",
     "typescript": "^5.9.3",
     "vitest": "5.0.1"
   },
   "dependencies": {
+    "@prisma/client": "6.19.3",
     "zod": "4.6.5"
   }
 }

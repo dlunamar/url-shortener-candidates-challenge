@@ -1,0 +1,117 @@
+Paso 2 — Persistencia Prisma + SQLite (sin tocar dominio)
+==========================================================
+
+Fecha: 2026-09-23 (Node v24.18.0, pnpm 10.20.0)
+Rama: feat/david-luna-fase-2-prisma
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+Engine (`libs/engine`):
+- `prisma/schema.prisma` (nuevo): datasource sqlite con
+  `url = env("DATABASE_URL")`; modelo `ShortUrl`
+  (`code @id`, `originalUrl`, `clicks @default(0)`,
+  `createdAt @default(now())`, tabla `short_urls`).
+- `prisma/migrations/20260923135100_init/migration.sql` (nuevo):
+  migración inicial versionada y committeada.
+- `src/infra/prisma-client.ts` (nuevo): singleton `PrismaClient` con
+  guard `globalThis` (evita agotar conexiones con recargas dev/SSR).
+- `src/infra/prisma-url-repository.ts` (nuevo): `UrlRepository` con
+  Prisma. Mapeo fila↔dominio en el borde (el dominio no ve tipos
+  Prisma); `incrementClicks` atómico (`update increment`);
+  `P2002 → CodeCollisionError`, `P2025 → null`.
+- `src/infra/prisma-url-repository.test.ts` (nuevo): 4 tests contra
+  SQLite efímero (fichero `.test-<pid>.db` junto al schema + `db push`
+  en `beforeAll`, borrado + `$disconnect` en `afterAll`; nunca toca
+  `dev.db`). Round-trip, duplicado→`CodeCollisionError`, incremento
+  1→2 y `findAll`.
+- `src/index.ts` (modificado): exporta `PrismaUrlRepository` y `prisma`.
+- `package.json` (modificado): `@prisma/client@6.19.3` en dependencies,
+  `prisma@6.19.3` en devDependencies (pins exactos); scripts
+  `prisma:generate`, `db:migrate`, `db:deploy`, `db:push`.
+
+Entorno y Docker:
+- `.env.example` (modificado): `DATABASE_URL="file:./dev.db"` + nota
+  de que el CLI solo lee `libs/engine/.env` (misma variable).
+- `Dockerfile` (modificado): `prisma generate` (con URL dummy, sin
+  conexión) ANTES de `pnpm build` — sin esto `tsc` falla porque los
+  tipos del cliente generado no existen; copia de `libs/engine/prisma`
+  a producción; `CMD` ejecuta `migrate deploy --schema <absoluto>`
+  antes de `pnpm start`.
+- `docker-compose.yml` (modificado): `DATABASE_URL=file:/app/data/
+  shortener.db` (absoluta) + volumen `./data:/app/data`.
+- `README.md` (modificado): setup local con `db:migrate`; sección
+  Docker con migraciones automáticas y volumen persistente.
+- `.gitignore` (modificado): `*.db`, `*.db-journal`, `/data/`.
+- `.dockerignore` (modificado): `*.db`, `*.db-journal` (el `dev.db`
+  local jamás debe hornearse en la imagen; `.env` ya estaba excluido).
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- Prisma 6.19.3 (no 7.x ni 8.x): el `latest` del registry era
+  `8.0.0-rc.15` (RC, descartada) y 7.x trae cambios de config; 6.19.x
+  es rama madura con el flujo clásico `schema.prisma + env`, exige
+  `node >= 18.18` (cumplido por 24.18.0 y por `node:20-alpine`).
+- `PrismaUrlRepository` tras el puerto de Fase 1: cero cambios en
+  dominio, casos de uso y sus 20 tests (DIP/OCP verificable: la fase
+  solo añade ficheros + exports).
+- Errores Prisma mapeados a errores de dominio (`P2002/P2025`): la
+  Fase 3 mapea errores de dominio→HTTP sin conocer a Prisma.
+- `db push` para tests vs `migrate` para el resto: push es rápido y
+  no genera migraciones basura; el historial versionado solo sale de
+  `migrate dev`.
+- `migrate deploy` en el arranque del contenedor (no en build): la
+  imagen es inmutable y el volumen con datos vive fuera; aplicar al
+  arrancar hace idempotente cada `up --build`.
+- Volúmen `./data` + URL absoluta en compose: independiente del cwd
+  del servidor (`/app/applications/web`).
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- Prisma 8.0.0-rc.15 / 7.10.0: RC o rama con nuevo sistema de config;
+  riesgo innecesario para un reto que pide SQLite simple.
+- better-sqlite3/drizzle directos: el reto sugiere Prisma y su
+  sistema de migraciones versionadas aporta más que un driver fino.
+- Contar clics con get+set en el repository: race condition; el
+  `increment` atómico de Prisma lo evita por construcción.
+- Una sola `.env` para todo: imposible sin dependencias extra
+  (el CLI de Prisma solo lee `libs/engine/.env` — comprobado: con
+  cwd=libs/engine ignoró el `.env` raíz). Dos ficheros locales
+  gitignored con la misma variable, documentado en `.env.example`.
+
+4. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+- `pnpm --filter @url-shortener/engine test` → 7 ficheros, 24 tests
+  passed (20 previos + 4 Prisma). Efímero confirmado: tras el run
+  solo queda `dev.db`; el `.test-<pid>.db` se limpia.
+- Punto crítico verificado empíricamente: con cwd=
+  `applications/web`, un insert vía PrismaClient con
+  `DATABASE_URL=file:./dev.db` escribió en
+  `libs/engine/prisma/dev.db` — los paths relativos resuelven desde
+  el schema, no desde el cwd. Determinista en dev, tests, CLI y
+  (por construcción) prod.
+- `pnpm test` (turbo) → 2 successful; `pnpm typecheck` → 2
+  successful; `pnpm build` → 2 successful.
+- Advertencia observada (no bloqueante): el build SSR avisa de que
+  `.prisma/client/default` se externaliza. Inocuo hoy (las rutas aún
+  no importan Prisma; vitest lo ejercita directo sin Vite). Queda
+  como punto de vigilancia en Fase 3, cuando el `loader`/`action`
+  usen `PrismaUrlRepository` bajo SSR.
+- `git status` confirma que `dev.db`, `libs/engine/.env` y el `.env`
+  raíz quedan ignorados; `libs/engine/prisma/` (schema+migración)
+  sí entra al commit.
+- NO verificado: `docker compose up --build` — no hay Docker en esta
+  máquina Windows (`docker` no reconocido). Los cambios de
+  Dockerfile/compose se revisaron por lectura contra el flujo
+  existente. Pendiente de verificación con Docker disponible.
+
+5. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- Fase 3: cablear `action`/`loader` a `shortenUrl`/`resolveUrl` con
+  `PrismaUrlRepository(prisma)` compartido; eliminar
+  `shortened-url.ts` + shim; rate-limit in-memory (documentar como
+  limitación), bloqueo SSRF, mapeo errores→status. Re-verificar el
+  aviso SSR con uso real bajo `react-router build` + arranque.
+- Verificar `docker compose up --build` + persistencia tras
+  `restart` en cuanto haya Docker (máquina del usuario o CI).
+- `dev.db` local actual: limpia, con la migración aplicada y sin la
+  fila PROBE de las pruebas empíricas (se borró y re-migró).
