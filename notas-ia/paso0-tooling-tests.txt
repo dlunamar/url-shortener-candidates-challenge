@@ -1,0 +1,100 @@
+Paso 0 — Tooling de testing y validación (Vitest + Zod)
+=======================================================
+
+Fecha: 2026-09-23 (Node local v24.18.0, pnpm 10.20.0)
+
+1. Qué se implementó (archivos nuevos/modificados y su rol)
+------------------------------------------------------------
+- libs/engine/package.json: añade `zod@4.6.5` en dependencies (uso en
+  runtime para validación) y `vitest@5.0.1` en devDependencies. Nuevo
+  script `test: vitest run`. Pins exactos (sin caret) para builds
+  reproducibles.
+- applications/web/package.json: lo mismo (`zod@4.6.5` en dependencies
+  porque el `action` validará en runtime; `vitest@5.0.1` en
+  devDependencies; script `test`). `zod` se declara explícito en web
+  aunque el engine también lo tenga: pnpm no resuelve transitivos.
+- libs/engine/vitest.config.ts (nuevo): `environment: "node"`,
+  `include: ["src/**/*.test.ts"]`.
+- applications/web/vitest.config.ts (nuevo): `environment: "node"`,
+  `include: ["app/**/*.test.{ts,tsx}"]`.
+- libs/engine/src/smoke.test.ts y applications/web/app/smoke.test.ts
+  (nuevos, temporales): un assert trivial por package para probar que el
+  runner, los filtros de pnpm y la tarea turbo funcionan. Se sustituyen
+  por tests reales en Fase 1 (engine) y Fase 3 (action/loader).
+- turbo.json: nueva tarea `test` con `dependsOn: ["^test"]` (web consume
+  al engine vía workspace, el orden importa) y `cache: false` para todo
+  el reto (ajuste pedido: evitar falsos verdes por caché en fases
+  posteriores).
+- package.json (raíz): nuevo script `test: turbo test`.
+- pnpm-lock.yaml: regenerado con las 4 adiciones (+223 líneas).
+
+No se tocó lógica de negocio ni rutas: `shortened-url.ts`, `_index.tsx`,
+`s.$code.tsx`, `vite.config.ts`, `Dockerfile` y `docker-compose.yml`
+quedan intactos. Cambio deliberadamente mínimo y reversible.
+
+2. Por qué se tomó cada decisión de diseño relevante
+----------------------------------------------------
+- Vitest frente a otras opciones: ESM-first y TS sin transpilación
+  extra, rápido, estándar en el ecosistema Vite del repo. Sin config de
+  transform adicional.
+- `environment: "node"` en ambos packages: precisión confirmada para
+  Fase 3 (testear action/loader invocando las funciones exportadas con
+  Request nativo, sin servidor ni e2e); no hay DOM que probar hasta
+  Fase 4, así que jsdom/happy-dom quedarían sin usar.
+- `zod` en dependencies (no devDependencies): los schemas se ejecutan
+  en runtime, tanto en el engine (Fase 1) como en el `action` (Fase 3).
+- Tarea turbo `test` con `dependsOn: ["^test"]`: respeta el grafo
+  workspace (`web -> @url-shortener/engine`).
+- `cache: false` permanente en `test`: los tests deben re-ejecutarse
+  siempre; el ahorro de caché no compensa el riesgo de un verde
+  obsoleto en un reto evaluado por commits pequeños.
+- No se añadió script `test:watch`: se omitió para mantener el diff
+  mínimo; `vitest` (watch) se puede invocar directo con npx/vitest si
+  hace falta en desarrollo.
+
+3. Qué alternativas se descartaron y por qué
+--------------------------------------------
+- Jest: mayor fricción con ESM/TS y más lento de arrancar; requeriría
+  babel/ts-jest solo para igualar lo que Vitest da por defecto.
+- Vitest 3.2.4 (rama más madura) frente a 5.0.1: se comprobó en el
+  registry que 5.0.1 exige `node ^22.12.0 || ^24.0.0 || >=26.0.0` y peer
+  `vite ^6.4.0 || ^7.0.0 || ^8.0.0` + `@types/node ^22.0.0 || >=24.0.0`.
+  El entorno (Node 24.18.0, vite 7.1.7, @types/node 22) lo cumple, así
+  que se fijó la última verificada en vez de una mayor antigua.
+- Zod 3.x frente a 4.x: 4.6.5 no declara engines restrictivos y el
+  TypeScript del repo (5.9.x) lo soporta; se usa la API actual de v4
+  (tenerlo presente al escribir schemas en Fase 1: p. ej. cambios
+  menores respecto a v3).
+- Coverage/lint en esta fase: fuera del alcance mínimo verificable;
+  no se añade peso que no aporte señal en Fase 0.
+
+4. Cómo se verificó (comandos ejecutados y resultado)
+-----------------------------------------------------
+Todo con pnpm 10.20.0 (instalado vía `npm install -g pnpm@10.20.0`
+porque `corepack prepare` falla con EPERM sobre
+`C:\Program Files\nodejs` sin elevación; detalle de entorno Windows,
+no del repo):
+- `pnpm --filter @url-shortener/engine test` → 1 passed (584 ms).
+- `pnpm --filter web test` → 1 passed.
+- `pnpm typecheck` (turbo, 2 packages) → 2 successful, 0 cached.
+- `pnpm test` (turbo test, primera ejecución real) → 2 successful,
+  con `cache bypass, force executing` visible en ambos (confirma que
+  `cache: false` aplica).
+- `pnpm build` (turbo build) → 2 successful (engine `tsc`, web
+  `react-router build` cliente + SSR sin errores).
+- `git status` confirma que el build no deja artefactos sin ignorar
+  (build/, dist, .react-router no aparecen como untracked).
+
+5. Qué queda pendiente o afecta a fases siguientes
+--------------------------------------------------
+- Fase 1 usará este tooling: tests reales de dominio (generador
+  Base62, unicidad/colisiones, schemas Zod, repository in-memory).
+  El `smoke.test.ts` del engine se elimina cuando haya cobertura real.
+- Fase 2 añadirá Prisma: habrá que revisar si `vitest` necesita excluir
+  `prisma/` y si el `build` de Docker necesita `prisma generate`.
+- Fase 3 eliminará/sustituirá el smoke de web por tests de
+  action/loader con Request nativo, más el test de integración.
+- Limitación conocida (pedida): el rate-limit de Fase 3 será
+  in-memory por instancia; se documentará en CHANGELOG_IA.md.
+- `AGENTS.md` aparece como untracked de una sesión anterior: NO forma
+  parte de este paso ni del commit propuesto de Fase 0.
