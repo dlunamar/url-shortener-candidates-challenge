@@ -1,5 +1,3 @@
-export { baseUrl } from "./base-url";
-
 export type { ShortenedUrl } from "./domain/url";
 export { createShortenedUrl } from "./domain/url";
 export type { UrlRepository } from "./domain/url-repository";
