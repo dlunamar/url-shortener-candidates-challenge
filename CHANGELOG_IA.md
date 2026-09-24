@@ -48,3 +48,10 @@
 - **Prompt usado**: "puedes instalarme lo necesario en mi maquina para el paso 2. Verifica Docker."
 - **Modelo**: Muse Spark (opencode/muse-spark).
 - **Revisión manual**: el daemon no levantaba hasta reiniciar (distros WSL ausentes); el primer `up --build` salió a la primera, sin iterar el Dockerfile. Cero cambios de código en esta fase.
+
+### [2026-09-24] Fix: el anti-SSRF rechazaba todos los hostnames
+- **Qué se hizo**: el pre-chequeo de IP literales en `isUrlSafe` devolvía "bloqueado" para hostnames normales (`isIP → 0`), rechazando todo antes del DNS; ahora solo filtra literales y los hostnames pasan por `lookup`. Resolver inyectable + 3 tests de regresión sin red (22 tests web en total).
+- **Por qué**: bug real detectado probando en local (`https://example.com` → "URL target is not allowed"); ningún test ejercitaba un hostname permitible.
+- **Prompt usado**: captura del error en local + diagnóstico.
+- **Modelo**: Muse Spark (opencode/muse-spark).
+- **Revisión manual**: diagnóstico con `nslookup`/Node confirmó DNS sano y acotó el bug al pre-chequeo; los smokes previos usaban IP literales, por eso no lo vieron.

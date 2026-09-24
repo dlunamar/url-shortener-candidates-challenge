@@ -23,12 +23,24 @@ function isBlockedIp(ip: string): boolean {
   return true;
 }
 
+export type HostResolver = (
+  hostname: string,
+) => Promise<Array<{ address: string }>>;
+
+async function lookupHost(hostname: string): Promise<Array<{ address: string }>> {
+  return lookup(hostname, { all: true });
+}
+
 /**
  * Basic SSRF guard for shortening targets. Allows only http(s) hosts that
- * resolve exclusively to public IPs. Fail-closed: literals in blocked
- * ranges, unresolvable hosts and non-http(s) URLs are rejected.
+ * resolve exclusively to public IPs. Fail-closed: IP literals in blocked
+ * ranges, hosts resolving to blocked ranges, unresolvable hosts and
+ * non-http(s) URLs are rejected.
  */
-export async function isUrlSafe(target: string): Promise<boolean> {
+export async function isUrlSafe(
+  target: string,
+  resolve: HostResolver = lookupHost,
+): Promise<boolean> {
   let url: URL;
   try {
     url = new URL(target);
@@ -38,12 +50,14 @@ export async function isUrlSafe(target: string): Promise<boolean> {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return false;
   }
-  if (isBlockedIp(url.hostname)) {
+  // Fast path for IP literals only: regular hostnames (isIP === 0) must
+  // go through DNS below instead of being rejected here.
+  if (isIP(url.hostname) !== 0 && isBlockedIp(url.hostname)) {
     return false;
   }
   let addresses: Array<{ address: string }>;
   try {
-    addresses = await lookup(url.hostname, { all: true });
+    addresses = await resolve(url.hostname);
   } catch {
     return false;
   }

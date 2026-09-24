@@ -27,4 +27,37 @@ describe("isUrlSafe", () => {
   it("allows a public IP literal (numeric lookup needs no network)", async () => {
     await expect(isUrlSafe("http://93.184.216.0/")).resolves.toBe(true);
   });
+
+  it("allows a hostname resolving only to public IPs (stubbed DNS)", async () => {
+    const resolve = async () => [
+      { address: "93.184.216.34" },
+      { address: "2606:2800:220:1:248:1893:25c8:1946" },
+    ];
+    await expect(
+      isUrlSafe("https://example.com", resolve),
+    ).resolves.toBe(true);
+    // The resolver must actually be consulted for hostnames.
+    let called = false;
+    await isUrlSafe("https://example.com", async () => {
+      called = true;
+      return [{ address: "93.184.216.34" }];
+    });
+    expect(called).toBe(true);
+  });
+
+  it("rejects a hostname resolving to a blocked IP (stubbed DNS)", async () => {
+    const resolve = async () => [{ address: "10.1.2.3" }];
+    await expect(
+      isUrlSafe("https://internal.example", resolve),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects when resolution fails (stubbed DNS)", async () => {
+    const resolve = async (): Promise<Array<{ address: string }>> => {
+      throw new Error("ENOTFOUND");
+    };
+    await expect(
+      isUrlSafe("https://example.com", resolve),
+    ).resolves.toBe(false);
+  });
 });
