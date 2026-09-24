@@ -2,7 +2,7 @@
 
 ## Qué hice
 
-Refactor completo del URL shortener en 5 fases pequeñas y verificables
+Refactor completo del URL shortener en fases pequeñas y verificables
 (detalle por fase en `CHANGELOG_IA.md` y `notas-ia/paso*.txt`):
 
 - **Fase 0 — Tooling**: Vitest 5.0.1 + Zod 4.6.5 (pins exactos,
@@ -33,8 +33,21 @@ Refactor completo del URL shortener en 5 fases pequeñas y verificables
   (`button`/`input`/`card` con cva), formulario accesible (`label`,
   `type="url"`, loading con `useNavigation`, `role="alert"`, botón
   copiar) y lista de URLs con badge de clics, fecha y estado vacío,
-  alimentada por `listUrls`. Smoke prod: vacío→crear→0 clics→
-  302→1 clic.
+   alimentada por `listUrls`. Smoke prod: vacío→crear→0 clics→
+   302→1 clic.
+- **Fase 5 — Cierre**: este archivo, filas de Prisma/SQLite/Zod/Vitest
+  en el README y verificación global (typecheck + 43 tests + build
+  en verde), sin cambios de código.
+- **Fase 6 — Docker**: instalado WSL2 + Docker Desktop 4.91.0;
+  `docker compose up --build` funcionó a la primera, con migraciones
+  aplicadas en arranque; flujo crear→302→`restart` confirmó que URL y
+  clics persisten en el volumen `./data`.
+- **Fixes post-cierre** (ramas `chore/...fase-6`): bug real detectado
+  probando en local — el anti-SSRF rechazaba *todos* los hostnames
+  (el pre-chequeo de IP literales filtraba también `isIP → 0`);
+  fix + resolver inyectable + 3 tests de regresión sin red en su
+  propio commit; además se eliminó el export `baseUrl` del engine,
+  ya sin uso.
 
 Prioricé el backend (persistencia, validación, seguridad, tests)
 sobre la UI porque los defectos graves estaban allí; la UI se
@@ -45,9 +58,6 @@ reescribió al final sobre un backend ya sólido.
 - **Rate-limit distribuido** (Redis): el actual es in-memory por
   instancia y la IP sale del header `x-forwarded-for` (documentado
   como limitación conocida).
-- **Verificar `docker compose up --build`**: no había Docker en la
-  máquina de desarrollo; el servidor prod sí se verificó en local,
-  que cubre el riesgo principal (bundle SSR + Prisma).
 - **Tests de componentes** (Testing Library + happy-dom) y
   paginación/búsqueda en la lista de URLs.
 - **Deduplicación** de URLs ya acortadas y caducidad opcional.
@@ -75,7 +85,10 @@ compatibilidad de versiones en el registry, imports relativos,
 `data()` de React Router (no es un `Response`: obligó a separar los
 handlers del framework), resolución de `@prisma/client` bajo pnpm
 strict + SSR (servidor compilado que moría al arrancar), `aria-label`
-del badge de clics y limpieza de filas de prueba de `dev.db`.
+del badge de clics, limpieza de filas de prueba de `dev.db` y
+diagnóstico del anti-SSRF que bloqueaba hostnames (`nslookup`/Node
+confirmaron DNS sano y acotaron el bug al pre-chequeo; los smokes
+previos usaban IP literales, por eso no lo vieron).
 
 ## Feedback
 
